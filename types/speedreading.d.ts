@@ -1,11 +1,15 @@
 export interface User {
   id: string;
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
   age: number;
   ageGroup: 'child' | 'teen' | 'adult';
   currentLevel: number;
   completedLevels: number[];
   totalProgress: number;
   createdAt: Date;
+  provider?: 'google' | 'anonymous';
 }
 
 export interface SpeedReadingExercise {

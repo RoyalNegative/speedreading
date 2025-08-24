@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { User, SpeedReadingExercise, ExerciseResult, AgeGroupConfig } from '../types/speedreading';
 import { SPEED_READING_EXERCISES } from '../data/exercises';
+import { User as FirebaseUser } from 'firebase/auth';
 
 interface SpeedReadingState {
   // User State
   currentUser: User | null;
   isOnboardingCompleted: boolean;
+  isAuthenticated: boolean;
   
   // Exercise State
   exercises: SpeedReadingExercise[];
@@ -23,7 +25,8 @@ interface SpeedReadingState {
   
   // Actions
   setUser: (user: User) => void;
-  completeOnboarding: (age: number) => void;
+  setFirebaseUser: (firebaseUser: FirebaseUser) => void;
+  completeOnboarding: (age: number, firebaseUser?: FirebaseUser) => void;
   setCurrentExercise: (exercise: SpeedReadingExercise | null) => void;
   completeExercise: (result: ExerciseResult) => void;
   unlockNextLevel: () => void;
@@ -32,6 +35,7 @@ interface SpeedReadingState {
   calculateProgress: () => number;
   resetProgress: () => void;
   loadExercises: () => void;
+  signOut: () => void;
 }
 
 // Yaş grup konfigürasyonları
@@ -66,6 +70,7 @@ export const useSpeedReadingStore = create<SpeedReadingState>((set, get) => ({
   // Initial State
   currentUser: null,
   isOnboardingCompleted: false,
+  isAuthenticated: false,
   exercises: [],
   currentExercise: null,
   exerciseResults: [],
@@ -80,6 +85,34 @@ export const useSpeedReadingStore = create<SpeedReadingState>((set, get) => ({
     set({ exercises: SPEED_READING_EXERCISES });
   },
 
+  // Set Firebase User (from Google Auth)
+  setFirebaseUser: (firebaseUser: FirebaseUser) => {
+    const user: User = {
+      id: firebaseUser.uid,
+      email: firebaseUser.email || undefined,
+      displayName: firebaseUser.displayName || undefined,
+      photoURL: firebaseUser.photoURL || undefined,
+      age: 0, // Will be set in onboarding
+      ageGroup: 'teen', // Default, will be updated
+      currentLevel: 1,
+      completedLevels: [],
+      totalProgress: 0,
+      createdAt: new Date(),
+      provider: 'google'
+    };
+
+    set({ 
+      currentUser: user,
+      isAuthenticated: true
+    });
+
+    // Load exercises if not already loaded
+    const { exercises } = get();
+    if (exercises.length === 0) {
+      get().loadExercises();
+    }
+  },
+
   // Actions
   setUser: (user: User) => {
     const ageGroup = AGE_GROUP_CONFIGS.find(config => 
@@ -91,7 +124,8 @@ export const useSpeedReadingStore = create<SpeedReadingState>((set, get) => ({
       currentAgeGroup: ageGroup || null,
       currentLevel: user.currentLevel,
       unlockedLevels: user.completedLevels.concat([user.currentLevel]),
-      maxUnlockedLevel: Math.max(...user.completedLevels.concat([user.currentLevel]))
+      maxUnlockedLevel: Math.max(...user.completedLevels.concat([user.currentLevel])),
+      isAuthenticated: true
     });
 
     // Load exercises if not already loaded
@@ -101,23 +135,41 @@ export const useSpeedReadingStore = create<SpeedReadingState>((set, get) => ({
     }
   },
 
-  completeOnboarding: (age: number) => {
+  completeOnboarding: (age: number, firebaseUser?: FirebaseUser) => {
+    const { currentUser } = get();
     const ageGroup = age <= 12 ? 'child' : age <= 17 ? 'teen' : 'adult';
     const ageGroupConfig = AGE_GROUP_CONFIGS.find(config => config.ageGroup === ageGroup);
     
-    const newUser: User = {
-      id: Date.now().toString(),
-      age,
-      ageGroup,
-      currentLevel: 1,
-      completedLevels: [],
-      totalProgress: 0,
-      createdAt: new Date()
-    };
+    let newUser: User;
+    
+    if (currentUser && firebaseUser) {
+      // Update existing user from Google Auth
+      newUser = {
+        ...currentUser,
+        age,
+        ageGroup,
+        currentLevel: 1,
+        completedLevels: [],
+        totalProgress: 0,
+      };
+    } else {
+      // Create new anonymous user
+      newUser = {
+        id: Date.now().toString(),
+        age,
+        ageGroup,
+        currentLevel: 1,
+        completedLevels: [],
+        totalProgress: 0,
+        createdAt: new Date(),
+        provider: 'anonymous'
+      };
+    }
     
     set({ 
       currentUser: newUser, 
       isOnboardingCompleted: true,
+      isAuthenticated: true,
       currentAgeGroup: ageGroupConfig || null,
       currentLevel: 1,
       unlockedLevels: [1],
@@ -126,6 +178,20 @@ export const useSpeedReadingStore = create<SpeedReadingState>((set, get) => ({
 
     // Load exercises
     get().loadExercises();
+  },
+
+  signOut: () => {
+    set({
+      currentUser: null,
+      isAuthenticated: false,
+      isOnboardingCompleted: false,
+      currentExercise: null,
+      exerciseResults: [],
+      currentLevel: 1,
+      unlockedLevels: [1],
+      maxUnlockedLevel: 1,
+      currentAgeGroup: null
+    });
   },
 
   setCurrentExercise: (exercise: SpeedReadingExercise | null) => {

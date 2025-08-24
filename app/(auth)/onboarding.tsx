@@ -1,14 +1,22 @@
 import { ThemedText } from '@/components/ThemedText';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, TextInput, Alert } from 'react-native';
 import { useSpeedReadingStore } from '@/stores/useSpeedReadingStore';
+import { auth } from '@/lib/firebase';
 
 export default function OnboardingScreen() {
   const [step, setStep] = useState(1);
   const [age, setAge] = useState('');
-  const { completeOnboarding } = useSpeedReadingStore();
+  const { completeOnboarding, currentUser, isAuthenticated } = useSpeedReadingStore();
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated && !currentUser) {
+      router.replace('/(auth)/signin');
+    }
+  }, [isAuthenticated, currentUser]);
 
   const handleNext = () => {
     if (step === 1) {
@@ -19,7 +27,7 @@ export default function OnboardingScreen() {
         Alert.alert('Uyarı', 'Lütfen geçerli bir yaş giriniz (6-100 arası)');
         return;
       }
-      completeOnboarding(ageNumber);
+      completeOnboarding(ageNumber, auth.currentUser || undefined);
       router.replace('/(tabs)');
     }
   };
@@ -64,6 +72,22 @@ export default function OnboardingScreen() {
           <View style={styles.center}>
             <Image source={require('@/assets/images/icon.png')} style={{ width: 96, height: 96, marginBottom: 12 }} />
             <ThemedText type="title">SpeedReading</ThemedText>
+            
+            {/* User Info */}
+            {currentUser && currentUser.displayName && (
+              <View style={styles.userInfo}>
+                <ThemedText style={styles.welcomeText}>
+                  Hoş geldiniz, {currentUser.displayName}!
+                </ThemedText>
+                {currentUser.photoURL && (
+                  <Image 
+                    source={{ uri: currentUser.photoURL }} 
+                    style={styles.profilePhoto}
+                  />
+                )}
+              </View>
+            )}
+            
             <ThemedText style={styles.subtitle}>
               Hızlı okuma becerini oyunlaştırılmış pratiklerle geliştir
             </ThemedText>
@@ -145,6 +169,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     paddingHorizontal: 24, 
     gap: 8 
+  },
+  userInfo: {
+    alignItems: 'center',
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+  },
+  welcomeText: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  profilePhoto: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: 'white',
   },
   subtitle: {
     textAlign: 'center',
